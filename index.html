@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Módní Poradce</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .upload-section {
+            text-align: center;
+            padding: 40px;
+            border: 3px dashed #bdc3c7;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #3498db;
+            background: rgba(52, 152, 219, 0.05);
+        }
+
+        .upload-section.dragover {
+            border-color: #2ecc71;
+            background: rgba(46, 204, 113, 0.05);
+        }
+
+        .upload-btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        #preview {
+            max-width: 100%;
+            margin: 20px 0;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            display: none;
+        }
+
+        .result h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .suggestions {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .suggestion-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .upload-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 AI Módní Poradce</h1>
+        
+        <div class="upload-section" id="dropZone">
+            <p>Přetáhněte sem fotku oblečení nebo</p>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                Vyberte soubor
+            </button>
+        </div>
+
+        <img id="preview" alt="Náhled">
+
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Analyzuji váš outfit...</p>
+        </div>
+
+        <div class="result">
+            <h2>Módní doporučení</h2>
+            <div id="analysis"></div>
+            <div class="suggestions" id="suggestions"></div>
+        </div>
+    </div>
+
+    <script>
+        // Konfigurace OpenAI API
+        const OPENAI_API_KEY = 'VASE_API_KLIC'; // Zde vložte svůj OpenAI API klíč
+        
+        // Elementy DOM
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const loading = document.querySelector('.loading');
+        const result = document.querySelector('.result');
+        const analysis = document.getElementById('analysis');
+        const suggestions = document.getElementById('suggestions');
+
+        // Event listeners pro drag & drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        // Zpracování vybraného souboru
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Prosím vyberte obrázek.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                analyzeOutfit(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Analýza outfitu pomocí OpenAI API
+        async function analyzeOutfit(imageData) {
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            try {
+                // Převod base64 na blob
+                const response = await fetch(imageData);
+                const blob = await response.blob();
+
+                // Vytvoření FormData pro API request
+                const formData = new FormData();
+                formData.append('image', blob);
+
+                // API request na OpenAI
+                const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4-vision-preview",
+                        messages: [
+                            {
+                                role: "user",
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: "Analyzuj tento outfit a poskytni módní rady. Zaměř se na barvy, střih, příležitosti k nošení a možné doplňky. Odpověz v češtině."
+                                    },
+                                    {
+                                        type: "image_url",
+                                        image_url: imageData
+                                    }
+                                ]
+                            }
+                        ]
+                    })
+                });
+
+                const data = await aiResponse.json();
+                displayResults(data.choices[0].message.content);
+            } catch (error) {
+                console.error('Chyba při analýze:', error);
+                alert('Nastala chyba při analýze outfitu. Zkuste to prosím znovu.');
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // Zobrazení výsledků
+        function displayResults(analysisText) {
+            result.style.display = 'block';
+            analysis.innerHTML = `<p>${analysisText}</p>`;
+
+            // Generování náhodných doporučení pro ukázku
+            const suggestionExamples = [
+                { title: 'Doplňky', text: 'Zkuste přidat minimalistické šperky pro elegantní vzhled.' },
+                { title: 'Boty', text: 'Doporučujeme neutrální tóny bot pro versatilní kombinace.' },
+                { title: 'Vrstvení', text: 'Přidejte lehkou bundu nebo kardigan pro více možností stylingu.' }
+            ];
+
+            suggestions.innerHTML = suggestionExamples.map(suggestion => `
+                <div class="suggestion-card">
+                    <h3>${suggestion.title}</h3>
+                    <p>${suggestion.text}</p>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
